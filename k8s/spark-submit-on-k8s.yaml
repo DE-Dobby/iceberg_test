@@ -1,0 +1,93 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# spark-submit --master k8s:// 방식으로 클러스터 모드 실행 예시
+#
+# 이 Job 은 spark-submit 명령을 직접 실행하여
+# Kubernetes 클러스터 모드로 Spark 드라이버/익스큐터를 구동합니다.
+#
+# 사전 준비:
+#   - minio.yaml 배포 완료
+#   - spark-job.yaml 의 RBAC 배포 완료
+#   - 이미지를 레지스트리에 push 완료
+# ──────────────────────────────────────────────────────────────────────────────
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spark-submit-minio-test
+  namespace: spark-test
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      serviceAccountName: spark
+      restartPolicy: Never
+
+      initContainers:
+        - name: wait-minio
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until wget -q -O- http://minio:9000/minio/health/ready; do
+                sleep 3
+              done
+
+      containers:
+        - name: spark-submit
+          image: apache/spark:3.4.1-scala2.12-java17-python3-ubuntu
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: accessKey
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secretKey
+          command:
+            - /opt/spark/bin/spark-submit
+            - --master
+            - k8s://https://kubernetes.default.svc:443
+            - --deploy-mode
+            - cluster
+            - --name
+            - spark-minio-test
+            - --class
+            - com.example.MinIOSparkTest
+            - --conf
+            - spark.kubernetes.namespace=spark-test
+            - --conf
+            - spark.kubernetes.authenticate.driver.serviceAccountName=spark
+            - --conf
+            # TODO: 실제 이미지로 교체
+            - spark.kubernetes.container.image=your-registry/spark-minio-test:1.0.0
+            - --conf
+            - spark.executor.instances=2
+            - --conf
+            - spark.executor.memory=1g
+            - --conf
+            - spark.driver.memory=1g
+            - --conf
+            - spark.hadoop.fs.s3a.endpoint=http://minio:9000
+            - --conf
+            - spark.hadoop.fs.s3a.access.key=$(MINIO_ACCESS_KEY)
+            - --conf
+            - spark.hadoop.fs.s3a.secret.key=$(MINIO_SECRET_KEY)
+            - --conf
+            - spark.hadoop.fs.s3a.path.style.access=true
+            - --conf
+            - spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
+            - --conf
+            - spark.hadoop.fs.s3a.aws.credentials.provider=org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider
+            - --conf
+            - spark.sql.shuffle.partitions=4
+            - local:///opt/spark/jars/spark-minio-test.jar
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
