@@ -1,0 +1,113 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Spark MinIO 테스트 Job
+#
+# 사전 준비:
+#   1. k8s/minio.yaml 먼저 배포하고 minio-init Job 완료 확인
+#   2. 아래 image: 값을 실제 빌드된 이미지로 교체
+#      예) image: your-registry/spark-minio-test:1.0.0
+# ──────────────────────────────────────────────────────────────────────────────
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spark
+  namespace: spark-test
+
+---
+# Spark driver 가 executor Pod 를 생성할 수 있도록 RBAC 설정
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: spark
+  namespace: spark-test
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "delete", "patch", "update"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: spark
+  namespace: spark-test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: spark
+subjects:
+  - kind: ServiceAccount
+    name: spark
+    namespace: spark-test
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spark-minio-test
+  namespace: spark-test
+  labels:
+    app: spark-minio-test
+spec:
+  # 실패 시 1번 재시도
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app: spark-minio-test
+    spec:
+      serviceAccountName: spark
+      restartPolicy: Never
+
+      # MinIO 가 올라올 때까지 대기
+      initContainers:
+        - name: wait-minio
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until wget -q -O- http://minio:9000/minio/health/ready; do
+                echo "MinIO 준비 대기 중..."
+                sleep 3
+              done
+              echo "MinIO 준비 완료"
+
+      containers:
+        - name: spark-minio-test
+          # TODO: 실제 빌드된 이미지로 교체
+          image: your-registry/spark-minio-test:1.0.0
+          imagePullPolicy: IfNotPresent
+
+          env:
+            - name: MINIO_ENDPOINT
+              value: "http://minio:9000"
+            - name: MINIO_BUCKET
+              value: "spark-test"
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: accessKey
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secretKey
+
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1"
+
+          # Spark 드라이버 로그 수집을 위한 볼륨 (선택)
+          volumeMounts:
+            - name: spark-logs
+              mountPath: /tmp/spark-logs
+
+      volumes:
+        - name: spark-logs
+          emptyDir: {}
