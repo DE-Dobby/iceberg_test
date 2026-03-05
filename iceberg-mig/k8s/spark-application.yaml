@@ -1,0 +1,44 @@
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: spark-sql-runner
+  namespace: spark-test
+spec:
+  type: Scala
+  mode: cluster
+  image: <your-registry>/spark-sql-runner:1.0.0
+  imagePullPolicy: Always
+  mainClass: com.example.SparkSqlRunner
+  mainApplicationFile: "local:///opt/spark/jars/dev.jar"
+
+  # 실행할 SQL을 여기에 지정
+  arguments:
+    - "SELECT current_timestamp()"
+
+  sparkVersion: "3.4.1"
+
+  sparkConf:
+    # Iceberg 카탈로그
+    spark.sql.extensions: "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions"
+    spark.sql.catalog.local: "org.apache.iceberg.spark.SparkCatalog"
+    spark.sql.catalog.local.type: "hadoop"
+    spark.sql.catalog.local.warehouse: "s3a://spark-test/warehouse"
+    spark.sql.defaultCatalog: "local"
+
+    # S3A / MinIO
+    spark.hadoop.fs.s3a.endpoint: "http://minio:9000"
+    spark.hadoop.fs.s3a.access.key: "minioadmin"
+    spark.hadoop.fs.s3a.secret.key: "minioadmin"
+    spark.hadoop.fs.s3a.path.style.access: "true"
+    spark.hadoop.fs.s3a.impl: "org.apache.hadoop.fs.s3a.S3AFileSystem"
+    spark.hadoop.fs.s3a.aws.credentials.provider: "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
+
+  driver:
+    cores: 1
+    memory: "1g"
+    serviceAccount: spark
+
+  executor:
+    cores: 1
+    instances: 1
+    memory: "1g"
