@@ -5,7 +5,6 @@
                              https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <!-- ── 부모 모듈 참조 ────────────────────────────────────────────────── -->
   <parent>
     <groupId>com.example</groupId>
     <artifactId>iceberg-mig</artifactId>
@@ -15,68 +14,25 @@
 
   <artifactId>dev</artifactId>
   <name>iceberg-mig-dev</name>
-  <description>Spark SQL 실행 / Iceberg 마이그레이션 개발 모듈</description>
 
-  <!-- ── 의존성 (버전은 부모 dependencyManagement에서 관리) ─────────────── -->
-  <dependencies>
+  <!-- 의존성은 부모 POM에서 상속 — 이 모듈에서 별도 선언 불필요 -->
 
-    <dependency>
-      <groupId>org.scala-lang</groupId>
-      <artifactId>scala-library</artifactId>
-    </dependency>
-
-    <!-- Spark -->
-    <dependency>
-      <groupId>org.apache.spark</groupId>
-      <artifactId>spark-core_${scala.compat.version}</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.spark</groupId>
-      <artifactId>spark-sql_${scala.compat.version}</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.spark</groupId>
-      <artifactId>spark-hive_${scala.compat.version}</artifactId>
-    </dependency>
-
-    <!-- Iceberg Spark 런타임 -->
-    <dependency>
-      <groupId>org.apache.iceberg</groupId>
-      <artifactId>iceberg-spark-runtime-3.4_${scala.compat.version}</artifactId>
-    </dependency>
-
-    <!-- S3 / MinIO 연동 -->
-    <dependency>
-      <groupId>org.apache.hadoop</groupId>
-      <artifactId>hadoop-aws</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.amazonaws</groupId>
-      <artifactId>aws-java-sdk-bundle</artifactId>
-    </dependency>
-
-  </dependencies>
-
-  <!-- ── 빌드 ─────────────────────────────────────────────────────────── -->
   <build>
     <sourceDirectory>src/main/scala</sourceDirectory>
-
     <plugins>
 
-      <!-- Scala 컴파일 -->
       <plugin>
         <groupId>net.alchim31.maven</groupId>
         <artifactId>scala-maven-plugin</artifactId>
       </plugin>
 
-      <!-- 실행 가능한 Fat JAR 생성 -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-shade-plugin</artifactId>
         <configuration>
+          <outputFile>${project.build.directory}/${project.artifactId}.jar</outputFile>
           <transformers>
             <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-              <!-- spark-submit 또는 java -jar 실행 진입점 -->
               <mainClass>com.example.SparkSqlRunner</mainClass>
             </transformer>
             <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
@@ -84,7 +40,6 @@
             </transformer>
             <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
           </transformers>
-          <outputFile>${project.build.directory}/${project.artifactId}-${project.version}-exec.jar</outputFile>
         </configuration>
       </plugin>
 
