@@ -24,15 +24,12 @@
     <hadoop.version>3.3.4</hadoop.version>
     <aws.sdk.version>1.12.262</aws.sdk.version>
     <scala-maven-plugin.version>4.8.1</scala-maven-plugin.version>
-    <maven-shade-plugin.version>3.5.1</maven-shade-plugin.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
   <!--
-    모든 하위 모듈이 공통으로 사용하는 의존성.
-    하위 모듈은 <dependencies> 선언 없이 자동으로 상속받는다.
-    - provided  : Spark 이미지에 포함된 라이브러리 (JAR에 번들 안 함)
-    - compile   : 이미지에 없는 라이브러리 → fat JAR에 포함
+    provided  : Spark 이미지 + Dockerfile에서 직접 추가하는 JAR
+    compile   : 없음 — 모든 런타임 의존성은 이미지에서 제공
   -->
   <dependencies>
 
@@ -43,7 +40,6 @@
       <scope>provided</scope>
     </dependency>
 
-    <!-- Spark (이미지 제공) -->
     <dependency>
       <groupId>org.apache.spark</groupId>
       <artifactId>spark-core_${scala.compat.version}</artifactId>
@@ -57,7 +53,6 @@
       <scope>provided</scope>
     </dependency>
 
-    <!-- S3A / MinIO (이미지 제공) -->
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-aws</artifactId>
@@ -71,11 +66,12 @@
       <scope>provided</scope>
     </dependency>
 
-    <!-- Iceberg (이미지에 없음 → fat JAR에 포함) -->
+    <!-- Iceberg: 컴파일 타임 참조용 provided (런타임은 Dockerfile에서 이미지에 직접 배치) -->
     <dependency>
       <groupId>org.apache.iceberg</groupId>
       <artifactId>iceberg-spark-runtime-3.4_${scala.compat.version}</artifactId>
       <version>${iceberg.version}</version>
+      <scope>provided</scope>
     </dependency>
 
   </dependencies>
@@ -83,7 +79,6 @@
   <build>
     <pluginManagement>
       <plugins>
-
         <plugin>
           <groupId>net.alchim31.maven</groupId>
           <artifactId>scala-maven-plugin</artifactId>
@@ -100,37 +95,6 @@
             </execution>
           </executions>
         </plugin>
-
-        <plugin>
-          <groupId>org.apache.maven.plugins</groupId>
-          <artifactId>maven-shade-plugin</artifactId>
-          <version>${maven-shade-plugin.version}</version>
-          <executions>
-            <execution>
-              <phase>package</phase>
-              <goals><goal>shade</goal></goals>
-            </execution>
-          </executions>
-          <configuration>
-            <filters>
-              <filter>
-                <artifact>*:*</artifact>
-                <excludes>
-                  <exclude>META-INF/*.SF</exclude>
-                  <exclude>META-INF/*.DSA</exclude>
-                  <exclude>META-INF/*.RSA</exclude>
-                </excludes>
-              </filter>
-            </filters>
-            <transformers>
-              <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
-                <resource>reference.conf</resource>
-              </transformer>
-              <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
-            </transformers>
-          </configuration>
-        </plugin>
-
       </plugins>
     </pluginManagement>
   </build>

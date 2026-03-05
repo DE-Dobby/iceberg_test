@@ -15,34 +15,16 @@
   <artifactId>dev</artifactId>
   <name>iceberg-mig-dev</name>
 
-  <!-- 의존성은 부모 POM에서 상속 — 이 모듈에서 별도 선언 불필요 -->
+  <!-- 의존성: 부모에서 상속 -->
+  <!-- 진입점: SparkApplication CR의 mainClass로 지정 → shade 불필요 -->
 
   <build>
     <sourceDirectory>src/main/scala</sourceDirectory>
     <plugins>
-
       <plugin>
         <groupId>net.alchim31.maven</groupId>
         <artifactId>scala-maven-plugin</artifactId>
       </plugin>
-
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-shade-plugin</artifactId>
-        <configuration>
-          <outputFile>${project.build.directory}/${project.artifactId}.jar</outputFile>
-          <transformers>
-            <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-              <mainClass>com.example.SparkSqlRunner</mainClass>
-            </transformer>
-            <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
-              <resource>reference.conf</resource>
-            </transformer>
-            <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
-          </transformers>
-        </configuration>
-      </plugin>
-
     </plugins>
   </build>
 
