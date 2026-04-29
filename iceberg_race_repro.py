@@ -1,18 +1,22 @@
 """
-Iceberg 버그 재현 테스트
-========================
-MERGE INTO 실행 중 expire_snapshots 가 동시에 동작할 때
-MERGE 가 참조하던 파일이 삭제되어 데이터 유실이 발생하는지 확인.
+Iceberg V1 포맷 버그 재현 테스트
+=================================
+테이블 포맷: format-version = 1
+  - V1 은 delete 파일(position/equality delete) 없음
+  - 모든 row-level 쓰기(UPDATE/MERGE)는 무조건 copy-on-write:
+    대상 파일을 통째로 읽어 새 파일로 재작성
+  - 따라서 MERGE 가 참조하는 파일은 반드시 현재 스냅샷의 실제 데이터 파일
 
-재현 조건:
-  - MERGE INTO (전체 레코드 update)  ← 오래 걸리는 쓰기
-  - 추가 적재 잡 (스냅샷 6개 빠르게 생성)
-  - expire_snapshots(older_than=now-1s, retain_last=5)
-  위 3개를 동시에 실행
+버그 시나리오:
+  MERGE INTO 가 스냅샷 S 의 데이터 파일들을 읽는 중에,
+  동시 ingest 잡이 스냅샷을 빠르게 쌓아 S 가 retain_last 밖으로 밀려나면
+  expire_snapshots 이 S 의 파일들을 물리적으로 삭제할 수 있음.
+  → MERGE 가 이미 삭제된 파일을 읽으려 할 때 FileNotFoundException 발생
 
 판단 기준:
-  - 버킷별 레코드가 0이 되거나
-  - 조회 시 FileNotFoundException 이 발생하면 → 재현 성공
+  - 완전 재현: FileNotFoundException / 레코드 0 버킷 / 레코드 수 감소
+  - 부분 재현: ValidationException(동시성 충돌) /
+               IllegalStateException("Runtime file filtering")
 """
 
 import os
@@ -107,9 +111,7 @@ def setup_table(spark):
         USING iceberg
         PARTITIONED BY (bucket({NUM_BUCKETS}, bkt))
         TBLPROPERTIES (
-            'write.delete.mode'       = 'copy-on-write',
-            'write.update.mode'       = 'copy-on-write',
-            'write.merge.mode'        = 'copy-on-write',
+            'format-version'          = '1',
             'commit.retry.num-retries'= '0'
         )
     """)
@@ -410,8 +412,8 @@ def main():
     os.makedirs(WAREHOUSE, exist_ok=True)
 
     print("=" * 60)
-    print("  Iceberg MERGE + expire_snapshots 레이스 컨디션 재현 테스트")
-    print(f"  Iceberg 1.8.0 / PySpark 3.4.3")
+    print("  Iceberg V1 MERGE + expire_snapshots 레이스 컨디션 재현 테스트")
+    print(f"  Iceberg 1.8.0 / PySpark 3.4.3 / format-version=1")
     print("=" * 60)
 
     spark = build_spark()
@@ -420,6 +422,18 @@ def main():
     try:
         # 1. 테이블 셋업
         before_count = setup_table(spark)
+
+        # V1 포맷 확인 출력
+        try:
+            row = spark.sql(
+                f"SHOW TBLPROPERTIES {TABLE_FQN} ('format-version')"
+            ).collect()
+            fmt_val = row[0][1] if row else "?"
+            print(f"[INFO] 테이블 format-version = {fmt_val}")
+            if fmt_val != "1":
+                print("[WARN] format-version 이 1 이 아닙니다!")
+        except Exception:
+            pass
 
         # 2. 동시 실행
         print("\n[RACE] 3개 작업 동시 실행 시작...")
